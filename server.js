@@ -108,14 +108,6 @@ bot.on('message', function (user, userID, channelID, message, evt) {
       return
     }
 
-    if (args[0].toLowerCase() == 'hallo') {
-      bot.sendMessage({
-        to: channelID,
-        message: (user == 'Noil') ? 'Hallo DADDDY ** <3' : `Hallo ${user} <3!`
-      })
-      return
-    }
-
     if (!isNaN(args[args.length - 1])) {
       time = args.pop();
     }
