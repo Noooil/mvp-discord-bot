@@ -1,5 +1,4 @@
 const Discord = require('discord.io');
-const logger = console;
 const token = process.env.TOKEN
 const MVP = require('./mvp.json');
 // Initialize Discord Bot
@@ -9,56 +8,10 @@ const bot = new Discord.Client({
   messageCacheLimit: 0
 });
 
+const timeoffset = '-4';
+
 bot.on('ready', function (evt) {
-  logger.info('Connected');
-  logger.info('Logged in as: ');
-  logger.info(bot.username + ' - (' + bot.id + ')');
-
-  setInterval(() => {
-    for (let key in MVP) {
-      if (MVP[key]['death']) {
-        let deadForMin = Math.floor((new Date() - new Date(MVP[key]['death'])) / 60000);
-        let minRespawnInMin = MVP[key]['min'] - deadForMin;
-        let maxRespawnInMin = MVP[key]['max'] - deadForMin;
-
-        // 5 minutes timer
-        if (minRespawnInMin == 5) {
-          bot.sendMessage({
-            to: MVP[key]['channelID'],
-            message: `${fancyName(key)} could respawn in 5 minutes!`
-          })
-        }
-
-        // could have been respawned
-        if (maxRespawnInMin != 0 && minRespawnInMin == 0) {
-          bot.sendMessage({
-            to: MVP[key]['channelID'],
-            message: `${fancyName(key)} could be respawned!`
-          })
-        }
-
-        if (maxRespawnInMin == 0) {
-          bot.sendMessage({
-            to: MVP[key]['channelID'],
-            message: `${fancyName(key)} has been respawned!`
-          })
-          delete MVP[key]['death']
-        }
-
-        if (MVP[key]['msgID']) {
-          let msg = (minRespawnInMin == maxRespawnInMin) ? `${fancyName(key)} will respawn in ${minRespawnInMin}!` : `${fancyName(key)} could respawn between ${minRespawnInMin} and ${maxRespawnInMin} minutes!`
-          bot.editMessage({
-            channelID: MVP[key]['channelID'],
-            messageID: MVP[key]['msgID'],
-            message: msg
-          })
-        }
-
-      } else {
-        continue
-      }
-    }
-  }, 60000)
+  setInterval(minuteCallback.bind(this), 60000)
 });
 
 bot.on('message', function (user, userID, channelID, message, evt) {
@@ -66,7 +19,7 @@ bot.on('message', function (user, userID, channelID, message, evt) {
   // It will listen for messages that will start with `!`
   if (message.substring(0, 1) == '!') {
     let args = message.substring(1).split(' ');
-    let time, time2, death;
+    let time, timestring, death;
     let del = false;
     let msg = '';
 
@@ -116,12 +69,14 @@ bot.on('message', function (user, userID, channelID, message, evt) {
       return
     }
 
+    // !phreeoni -1
     if (!isNaN(args[args.length - 1])) {
       time = args.pop();
     }
 
+    // !phreeoni 10:15
     if (/^\d{2}:\d{2}$/.test(args[args.length - 1])) {
-      time2 = args.pop()
+      timestring = args.pop()
     }
 
     if (args[args.length - 1] == 'del') {
@@ -129,24 +84,18 @@ bot.on('message', function (user, userID, channelID, message, evt) {
       args.pop()
     }
 
-    if (time || time2) {
-      death = new Date();
+    if (time || timestring) {
+      death = Date.now();
       if (time) {
-        death.setTime(death.getTime() + (time * 60000))
+        death += (time * 60000)
       } else {
-        let timestring = death.toISOString().split('T')[0] + 'T' + time2
-        death = new Date(timestring)
-      }
-      if (isNaN(death)) {
-        bot.sendMessage({
-          to: channelID,
-          message: `Timestring is invalid\n`
-        })
-        return
+        let now = new Date();
+        // adding 3 minutes offset to server time
+        death = Date.parse(`${now.toDateString()} ${timestring} GMT`) - ((timeoffset * 60 * 60 * 1000) + (3 * 60 * 1000))
       }
     }
 
-    const mvp = args.join('_').toUpperCase();
+    let mvp = args.join('_').toUpperCase();
 
     if (typeof MVP[mvp] === 'string') {
       let alias = mvp
@@ -177,13 +126,16 @@ bot.on('message', function (user, userID, channelID, message, evt) {
         });
       } else
         if (death) {
-          MVP[mvp]['death'] = death.toString()
+          MVP[mvp]['death'] = death
           MVP[mvp]['channelID'] = channelID
           let deadForMin = Math.floor((new Date() - new Date(MVP[mvp]['death'])) / 60000);
           let minRespawnInMin = MVP[mvp]['min'] - deadForMin;
+          // adding 3 minutes offset to server time
+          let servertime = new Date(death + (timeoffset * 60 * 60 * 1000) + (3 * 60 * 1000))
+          servertime = servertime.toTimeString('UTC').split(':').slice(0,2).join(':')
           bot.sendMessage({
             to: channelID,
-            message: `${fancyName(mvp)} was killed at ${death.toLocaleTimeString()} will remind you in ${minRespawnInMin - 5} minutes.\n`
+            message: `${fancyName(mvp)} was killed at ${servertime} (servertime for ROPS) will remind you in ${minRespawnInMin - 5} minutes.\n`
           });
         }
       if (MVP[mvp]['death']) {
@@ -234,3 +186,50 @@ function resolveAlias(mvp) {
     return mvp
   }
 }
+
+function minuteCallback() {
+    for (let key in MVP) {
+      if (MVP[key]['death']) {
+        let deadForMin = Math.floor((new Date() - new Date(MVP[key]['death'])) / 60000);
+        let minRespawnInMin = MVP[key]['min'] - deadForMin;
+        let maxRespawnInMin = MVP[key]['max'] - deadForMin;
+
+        // 5 minutes timer
+        if (minRespawnInMin == 5) {
+          bot.sendMessage({
+            to: MVP[key]['channelID'],
+            message: `${fancyName(key)} could respawn in 5 minutes!`
+          })
+        }
+
+        // could have been respawned
+        if (maxRespawnInMin != 0 && minRespawnInMin == 0) {
+          bot.sendMessage({
+            to: MVP[key]['channelID'],
+            message: `${fancyName(key)} could be respawned!`
+          })
+        }
+
+        if (maxRespawnInMin == 0) {
+          bot.sendMessage({
+            to: MVP[key]['channelID'],
+            message: `${fancyName(key)} has been respawned!`
+          })
+          delete MVP[key]['death']
+        }
+
+        if (MVP[key]['msgID']) {
+          let msg = (minRespawnInMin == maxRespawnInMin) ? `${fancyName(key)} will respawn in ${minRespawnInMin}!` : `${fancyName(key)} could respawn between ${minRespawnInMin} and ${maxRespawnInMin} minutes!`
+          bot.editMessage({
+            channelID: MVP[key]['channelID'],
+            messageID: MVP[key]['msgID'],
+            message: msg
+          })
+        }
+
+      } else {
+        continue
+      }
+    }
+  }
+require("http").createServer(async (req,res) => { res.statusCode = 200; res.write("ok"); res.end(); }).listen(3000, () => console.log("Now listening on port 3000"));
